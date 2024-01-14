@@ -1,0 +1,132 @@
+---
+title: "Lab1"
+author: "Bingqing Li"
+format: pdf
+editor: visual
+---
+
+```{r}
+#| message: false
+
+library(tidyverse)
+library(ggplot2)
+```
+
+```{r}
+#| warning: FALSE
+dm <- read_table("https://www.prdh.umontreal.ca/BDLC/data/ont/Mx_1x1.txt", 
+                 skip = 2, col_types = "dcddd")
+head(dm)
+```
+
+## Q1
+1. Plot the ratio of female to male mortality rates over time for ages 10,20,30 and 40 (different color for each age) and change the theme 
+```{r}
+dm |>
+  filter(Age %in% c(10, 20, 30, 40)) |>
+  mutate(fm_ratio = Female/Male) |> 
+  ggplot(aes(x = Year, y = fm_ratio, color = Age)) +
+  geom_line() +
+  theme_bw() +
+  labs(title = 'The ratio of female to male mortality rates') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+```
+
+## Q2
+2. Find the age that has the lowest female mortality rate each year 
+```{r}
+dm |>
+  group_by(Year) |>
+  summarise(lf_age = Age[which.min(Female)])
+```
+
+## Q3
+3. Use the `summarize(across())` syntax to calculate the standard deviation of mortality rates by age for the Male, Female and Total populations. 
+```{r}
+#| warning: FALSE
+dm |>
+  group_by(Age) |>
+  summarise(across(Female:Total, sd, na.rm = TRUE)) |>
+  arrange(as.numeric(Age))
+```
+
+## Q4
+4. The Canadian HMD also provides population sizes over time (https://www.prdh.umontreal.ca/BDLC/data/ont/Population.txt). Use these to calculate the population weighted average mortality rate separately for males and females, for every year. Make a nice line plot showing the result (with meaningful labels/titles) and briefly comment on what you see (1 sentence). Hint: `left_join` will probably be useful here. 
+
+```{r}
+#| warning: FALSE
+dp <- read_table("https://www.prdh.umontreal.ca/BDLC/data/ont/Population.txt",
+                 skip = 2, col_types = "dcddd")
+head(dp)
+```
+
+```{r}
+#| warning: false
+dl <- left_join(dm, dp, by=c('Year', 'Age'))
+colnames(dl) <- c('Year','Age', 'FemaleM', 'MaleM', 
+                  'TotalM', 'FemaleP', 'MaleP', 'TotalP' )
+head(dl)
+dl1 <- dl |>
+  group_by(Year) |>
+  summarise(weighted_mean_F = sum(FemaleM*FemaleP, 
+                                  na.rm = TRUE) /sum(FemaleP, na.rm = TRUE),
+            weighted_mean_M =  sum(MaleM*MaleP, 
+                                   na.rm = TRUE) /sum(MaleP, na.rm = TRUE) )|>
+  pivot_longer(weighted_mean_F:weighted_mean_M, names_to = 'Sex', 
+               values_to = 'Weighted_Mean') |>
+  mutate(Sex = case_when(
+    Sex == 'weighted_mean_F' ~ 'Female',
+    Sex == 'weighted_mean_M' ~ 'Male',
+    TRUE ~ as.character(Sex)
+  )) 
+
+dl1
+```
+
+```{r}
+dl1 |>
+  ggplot(aes(x = Year, y = Weighted_Mean, color = Sex)) + 
+  geom_line() +
+  theme_bw() + 
+  labs(y = 'Weighted Mortality',
+       title = 'The population weighted average mortality rate') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+The plot indicates that over the years, females have exhibited a lower average mortality rate compared to males, and   the mortality rate for male and female shows a general downward trend.
+
+## Q5
+5. Write down using appropriate notation, and run a simple linear regression with logged mortality rates as the outcome and age (as a continuous variable) as the covariate, using data for females aged less than 106 for the year 2000. Interpret the coefficient on age. 
+
+```{r}
+dm$Age <- as.numeric(dm$Age)
+dm1 <- dm |>
+  filter(Year == 2000 & Age < 106 & !is.na(Female)) |>
+  select(Year, Age, Female)
+dm1
+
+```
+
+```{r}
+model <-  lm(log(Female)~ Age, data = dm1)
+coef(model)
+
+
+p <- ggplot(dm1, aes(x = Age, y = log(Female))) +
+  geom_point() + 
+  geom_smooth(method = "lm", color = "red") +  
+  labs(
+    x = "Age",
+    y = "Log of Mortality Rate",
+    title = "Scatter Plot with Fitted Regression Line"
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme_bw()
+
+p
+```
+
+Because $$log(Female's \ Mortality_i) = 0.087\times Age_i -10.062,$$
+then $$Female's \ Mortality_i = e^{0.087\times Age_i -10.062}.$$ Thus, for females aged less than 106 for the year 2000, the mortality rate increases with age. Expected value change $e^{0.087}$ in Mortality rate with one unit increase in Age.
+
